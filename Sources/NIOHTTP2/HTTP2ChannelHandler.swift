@@ -476,14 +476,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             expectClientMagic: self.mode == .server,
             maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
         )
-        // RFC 9113 § 6.5.2 puts the initial value of SETTINGS_MAX_HEADER_LIST_SIZE at unlimited, so the peer
-        // may send a larger header block before it ACKs our SETTINGS. Accept up to our advertised limit from the
-        // start; a smaller value only takes effect once ACKed, via `.localSettingsChanged`.
-        if let maxHeaderListSize = self.initialSettings.last(where: { $0.parameter == .maxHeaderListSize })?.value,
-            maxHeaderListSize > self.frameDecoder.headerDecoder.maxHeaderListSize
-        {
-            self.frameDecoder.headerDecoder.maxHeaderListSize = maxHeaderListSize
-        }
+        self.raiseHeaderDecoderLimitToInitialMaxHeaderListSize()
         self.frameEncoder = HTTP2FrameEncoder(allocator: context.channel.allocator)
         self.writeBuffer = context.channel.allocator.buffer(capacity: 128)
         self.inboundStreamMultiplexerState.initialize(context: context, http2Handler: self, mode: self.mode)
@@ -499,6 +492,19 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             }
             self.activationState = .activated
             self.writeAndFlushPreamble(context: context)
+        }
+    }
+
+    /// Raises the header decoder's limit to the max header list size in our initial settings, if that is larger.
+    ///
+    /// RFC 9113 § 6.5.2 puts the initial value of SETTINGS_MAX_HEADER_LIST_SIZE at unlimited, so the peer
+    /// may send a larger header block before it ACKs our SETTINGS. Accept up to our advertised limit from the
+    /// start; a smaller value only takes effect once ACKed, via `.localSettingsChanged`.
+    private func raiseHeaderDecoderLimitToInitialMaxHeaderListSize() {
+        if let maxHeaderListSize = self.initialSettings.last(where: { $0.parameter == .maxHeaderListSize })?.value,
+            maxHeaderListSize > self.frameDecoder.headerDecoder.maxHeaderListSize
+        {
+            self.frameDecoder.headerDecoder.maxHeaderListSize = maxHeaderListSize
         }
     }
 
